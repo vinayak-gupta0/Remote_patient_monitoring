@@ -1,0 +1,35 @@
+name: Deploy to Tsuru
+
+on:
+  push:
+    branches:
+      - master
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install tsuru client
+        run: |
+          curl -sL https://github.com/tsuru/tsuru-client/releases/latest/download/tsuru_linux_amd64.tar.gz \
+          | tar xz
+          sudo mv tsuru /usr/local/bin/tsuru
+
+      - name: Deploy to Tsuru
+        env:
+          TSURU_HOST: ${{ secrets.TSURU_HOST }}
+          TSURU_TOKEN: ${{ secrets.TSURU_TOKEN }}
+        run: |
+          echo "Using TSURU_HOST=$TSURU_HOST"
+          echo "Deploying to app bioeng-scone-app"
+          tsuru app-deploy . -a bioeng-scone-app
