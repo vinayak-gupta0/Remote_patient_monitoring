@@ -14,13 +14,33 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Create deploy archive
-        run: tar czf app.tar.gz .
+      # Build is NOT needed for Python apps – skip gradlew
+
+      - name: Install Tsuru CLI
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/tsuru/tsuru-client/master/install.sh | sh
+          echo "Tsuru CLI installed"
+
+      - name: Add Target
+        env:
+          TSURU_TOKEN: ${{ secrets.TSURU_TOKEN }}
+          TSURU_HOST: ${{ secrets.TSURU_HOST }}
+        run: |
+          tsuru target-add default $TSURU_HOST -s
+
+      - name: Login to Tsuru
+        env:
+          TSURU_TOKEN: ${{ secrets.TSURU_TOKEN }}
+        run: |
+          tsuru login --token $TSURU_TOKEN
+
+      # For Python/Streamlit we deploy a tar.gz of the repo
+      - name: Create deploy package
+        run: |
+          tar czf app.tar.gz .
 
       - name: Deploy to Tsuru
-        uses: impaas-tsuru/actions/app-deploy@v1
-        with:
-          app-name: bioeng-scone-app
-          tsuru-host: ${{ secrets.TSURU_HOST }}
-          tsuru-token: ${{ secrets.TSURU_TOKEN }}
-          file: app.tar.gz
+        env:
+          TSURU_TOKEN: ${{ secrets.TSURU_TOKEN }}
+        run: |
+          tsuru app-deploy -a bioeng-scone-app app.tar.gz
