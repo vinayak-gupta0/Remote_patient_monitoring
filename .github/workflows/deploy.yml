@@ -27,7 +27,8 @@ jobs:
 
       - name: Create deploy package
         run: |
-          tar czf app.tar.gz .
+          tar --exclude=.git -czf app.tar.gz .
+
 
       - name: Deploy to Tsuru
         env:
