@@ -16,20 +16,18 @@ jobs:
 
       - name: Install Tsuru CLI
         run: |
-          # Download version 1.22.0 manually to avoid GitHub API rate limits
+          # Download version 1.22.0 manually
           wget https://github.com/tsuru/tsuru-client/releases/download/1.22.0/tsuru_1.22.0_linux_amd64.tar.gz
           
           # Unzip it
           tar -xf tsuru_1.22.0_linux_amd64.tar.gz
           
-          # Find the binary (it might be in a subfolder) and move it to the system folder
+          # Move binary to system folder
           find . -type f -name "tsuru" -exec sudo mv {} /usr/local/bin/tsuru \;
           
-          # Make sure it's executable
+          # Make executable
           sudo chmod +x /usr/local/bin/tsuru
           
-          # Verify it works
-          tsuru version
       - name: Add Target
         env:
           TSURU_HOST: ${{ secrets.TSURU_HOST }}
