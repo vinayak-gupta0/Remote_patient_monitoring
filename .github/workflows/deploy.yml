@@ -35,10 +35,3 @@ jobs:
         run: |
           tsuru app-deploy -a bioeng-scone-app .
 
-      - name: DEBUG - Show App Logs
-        if: always() # Run this even if the deploy fails
-        env:
-          TSURU_TOKEN: ${{ secrets.TSURU_TOKEN }}
-        run: |
-          echo "Fetching last 50 log lines..."
-          tsuru app-log -a bioeng-scone-app -l 50
