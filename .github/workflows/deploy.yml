@@ -25,15 +25,12 @@ jobs:
         run: |
           tsuru target-add default $TSURU_HOST -s || tsuru target-set default
 
-      # FIX: Save the tar file to /tmp to avoid the "file changed" error
-      # We also exclude .git to make the upload smaller and faster
-      - name: Create deploy package
-        run: |
-          tar -czf /tmp/app.tar.gz --exclude=.git .
-
-      # FIX: Point the deploy command to the file in /tmp
+      # REMOVED: "Create deploy package" step is not needed.
+      
       - name: Deploy to Tsuru
         env:
           TSURU_TOKEN: ${{ secrets.TSURU_TOKEN }}
+        # We simply use "." to tell Tsuru to deploy the current directory.
+        # Tsuru handles the zipping internally.
         run: |
-          tsuru app-deploy -a bioeng-scone-app /tmp/app.tar.gz
+          tsuru app-deploy -a bioeng-scone-app .
