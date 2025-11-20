@@ -1,4 +1,4 @@
-# test deploy
+# test redeploy
 import random
 from dataclasses import dataclass
 from typing import Dict
