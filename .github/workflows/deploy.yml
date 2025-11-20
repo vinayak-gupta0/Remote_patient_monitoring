@@ -25,14 +25,6 @@ jobs:
         run: |
           tsuru target-add default $TSURU_HOST -s || tsuru target-set default
 
-      # --- THIS IS THE FIX ---
-      # We explicitly tell Tsuru "This is a Python app"
-      - name: Set App Platform to Python
-        env:
-          TSURU_TOKEN: ${{ secrets.TSURU_TOKEN }}
-        run: |
-          tsuru app-update -a bioeng-scone-app -p python
-
       - name: Deploy to Tsuru
         env:
           TSURU_TOKEN: ${{ secrets.TSURU_TOKEN }}
