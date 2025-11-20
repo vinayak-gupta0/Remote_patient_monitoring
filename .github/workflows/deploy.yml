@@ -25,9 +25,9 @@ jobs:
         run: |
           tsuru target-add default $TSURU_HOST -s || tsuru target-set default
 
-      # --- NEW STEP HERE ---
-      # This forces Tsuru to stop looking for a Dockerfile and use Python instead
-      - name: Switch to Python Platform
+      # --- THIS IS THE FIX ---
+      # We explicitly tell Tsuru "This is a Python app"
+      - name: Set App Platform to Python
         env:
           TSURU_TOKEN: ${{ secrets.TSURU_TOKEN }}
         run: |
