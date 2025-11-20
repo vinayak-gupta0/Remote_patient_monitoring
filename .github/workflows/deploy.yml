@@ -3,8 +3,8 @@ name: Deploy to Tsuru
 on:
   push:
     branches:
-      - master
       - main
+      - master
 
 jobs:
   deploy:
@@ -14,22 +14,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+      # Pack everything in the repo as a tarball for Tsuru
+      - name: Create deploy archive
+        run: tar czf app.tar.gz .
 
-      - name: Install tsuru client
-        run: |
-          curl -sL https://github.com/tsuru/tsuru-client/releases/latest/download/tsuru_linux_amd64.tar.gz \
-          | tar xz
-          sudo mv tsuru /usr/local/bin/tsuru
-
+      # Use the same Tsuru GitHub Action your servlet template uses
       - name: Deploy to Tsuru
-        env:
-          TSURU_HOST: ${{ secrets.TSURU_HOST }}
-          TSURU_TOKEN: ${{ secrets.TSURU_TOKEN }}
-        run: |
-          echo "Using TSURU_HOST=$TSURU_HOST"
-          echo "Deploying to app bioeng-scone-app"
-          tsuru app-deploy . -a bioeng-scone-app
+        uses: tsuru/actions/app-deploy@v1
+        with:
+          app-name: bioeng-scone-app
+          tsuru-host: ${{ secrets.TSURU_HOST }}
+          tsuru-token: ${{ secrets.TSURU_TOKEN }}
+          file: app.tar.gz
