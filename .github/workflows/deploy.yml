@@ -14,13 +14,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Pack everything in the repo as a tarball for Tsuru
       - name: Create deploy archive
         run: tar czf app.tar.gz .
 
-      # Use the same Tsuru GitHub Action your servlet template uses
       - name: Deploy to Tsuru
-        uses: tsuru/actions/app-deploy@v1
+        uses: impaas-tsuru/actions/app-deploy@v1
         with:
           app-name: bioeng-scone-app
           tsuru-host: ${{ secrets.TSURU_HOST }}
