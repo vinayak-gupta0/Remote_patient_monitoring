@@ -25,13 +25,16 @@ jobs:
         run: |
           tsuru target-add default $TSURU_HOST -s || tsuru target-set default
 
-      # REMOVED: "Create deploy package" step is not needed.
-      
+      # --- NEW STEP HERE ---
+      # This forces Tsuru to stop looking for a Dockerfile and use Python instead
+      - name: Switch to Python Platform
+        env:
+          TSURU_TOKEN: ${{ secrets.TSURU_TOKEN }}
+        run: |
+          tsuru app-update -a bioeng-scone-app -p python
+
       - name: Deploy to Tsuru
         env:
           TSURU_TOKEN: ${{ secrets.TSURU_TOKEN }}
-        # We simply use "." to tell Tsuru to deploy the current directory.
-        # Tsuru handles the zipping internally.
         run: |
           tsuru app-deploy -a bioeng-scone-app .
-
