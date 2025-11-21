@@ -1,31 +1,53 @@
 import streamlit as st
 import streamlit.components.v1 as components
 from typing import Dict,List
+import os
+import base64
+import time
 
-def triggerAudio():
-    beep ="""
+def triggerAudio(container):
+    file_path = "/Users/ricky/Library/CloudStorage/OneDrive-ImperialCollegeLondon/Computer Science & Programming/Y3 Software Tutorial/Tutorial_1/Remote_patient_monitoring/deep2.mp3"
 
+    if not os.path.exists(file_path):
+        with container:
+            st.warning("Alarm audio file not found! Check the path: audio/beep.mp3")
+        return
+
+    with open(file_path, "rb") as f:
+        audio_bytes = f.read()
+        audio_b64 = base64.b64encode(audio_bytes).decode()
+        mime_type = "audio/mp3"
+
+
+    audio_js = f"""
+    <audio id="invisible_alarm" controls autoplay style="display:none;">
+    <source src="data:{mime_type};base64,{audio_b64}" type="{mime_type}">
+    Your browser does not support the audio element.
+    </audio>
     <script>
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    const ctx = new AudioContext();
-    if (ctx.state === "suspended") {ctx.resume()};
+    const audio = document.getElementById('invisible_alarm');
+    if (audio) {{
+        audio.volume = 0.8; // Set volume
+        audio.loop = false;
+        
+        // Use the Promise returned by play() to catch the specific error
+        const playPromise = audio.play();
 
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-
-    osc.type = "sine";
-    osc.frequency.value = 880;
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-
-    osc.start();
-    gain.gain.setValueAtTime (1,ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime +1.0);
-    osc.stop(ctx.currentTime +1.1)
+        if (playPromise !== undefined) {{
+            playPromise.then(_ => {{
+                // Audio playback started successfully (no message necessary)
+            }}).catch(error => {{
+                // THIS WILL CATCH THE BROWSER BLOCKING THE AUDIO
+                console.error("ALARM AUDIO BLOCKED. Reason:", error.name);
+            }});
+        }}
+    }}
     </script>
     """
-    components.html(beep, height =0, width=0)
+    unique_key = f"alarm_trigger_{time.time()}"
+
+    with container:
+        components.html(audio_js, height=0, width=0, scrolling=False)
 
 def getOverallLevel(vitals, vitalLevelFunc, ranges):
     lv = {
@@ -41,21 +63,28 @@ def getOverallLevel(vitals, vitalLevelFunc, ranges):
         return "moderate"
     return "ok"
 
-def updateAlerts( patients: Dict, vitalLevelFunc, rangesDict):
+def updateAlerts(patients: Dict, vitalLevelFunc, rangesDict, audio_container):
     severePatients: List[str] = []
-
+    
     for pid, p in patients.items():
         ov = getOverallLevel(p["vitals"], vitalLevelFunc, rangesDict)
         if ov == "severe":
             severePatients.append(pid)
     
     anySevere = len(severePatients)>0
-    prevSevere = st.session_state.get("alarm_activate", False)
+    # prevSevere is no longer just a boolean; it's the last list of severe patients
+    prev_severe_list = st.session_state.get("severe_patients_list", [])
 
-    st.session_state["severe_patients"] = severePatients
+    st.session_state["severe_patients_list"] = severePatients
     
-    if anySevere and not prevSevere:
-        triggerAudio()
-        st.session_state["alarm_active"] = True
-    elif not anySevere and prevSevere:
-        st.session_state["alarm_active"] = False
+    # Condition to trigger audio:
+    # 1. Any patient is severe AND 
+    # 2. (Either it's the first time OR the list of severe patients has changed OR it's been a few seconds)
+    # A simple check: if any severe patients exist, re-render the audio component to try to play the sound.
+    # The Streamlit auto-rerun loop will make this attempt to play the audio every second.
+    if anySevere:
+        triggerAudio(audio_container) 
+    else:
+        # Clear the container by rendering nothing when safe
+        with audio_container:
+            st.empty()

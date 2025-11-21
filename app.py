@@ -12,6 +12,8 @@ from datetime import date
 import math
 
 from alart import updateAlerts
+import os
+import base64
 
 @dataclass
 class Ranges:
@@ -140,7 +142,7 @@ if "patients" not in st.session_state:
         st.session_state.patients[pid] = {
             "id": pid,
             "name": name,
-            "vitals": Vitals(hr=72+random.randint(-2,2), temp=36.8, rr=14, bp_sys=118, bp_dia=78),
+            "vitals": Vitals(hr=100+random.randint(-2,2), temp=36.8, rr=10, bp_sys=118, bp_dia=78),
             "hr_history": [], # for history
             "minute_logs": [], # for history
             "last_log_min": None,
@@ -698,11 +700,12 @@ nav_ph = st.container()
 with nav_ph:
     navbar()
 
-update_all_patients()
-updateAlerts(st.session_state.patients,vital_level,DEFAULT_RANGES)
+audio_ph = st.container()
 grid_ph = st.container()
 detail_ph = st.container()
 
+update_all_patients()
+updateAlerts(st.session_state.patients,vital_level,DEFAULT_RANGES,audio_ph)
 with grid_ph:
     render_grid()
 
