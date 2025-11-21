@@ -11,6 +11,8 @@ import altair as alt
 from datetime import date
 import math
 
+from alart import updateAlerts
+
 @dataclass
 class Ranges:
     min: float
@@ -167,6 +169,8 @@ def update_all_patients():
         maybe_log_minute(pid)
         update_ecg_for_patient(p)
         maybe_sample_ecg(pid)
+
+
 
 def maybe_log_minute(pid):
     p = st.session_state.patients[pid]
@@ -695,6 +699,7 @@ with nav_ph:
     navbar()
 
 update_all_patients()
+updateAlerts(st.session_state.patients,vital_level,DEFAULT_RANGES)
 grid_ph = st.container()
 detail_ph = st.container()
 
