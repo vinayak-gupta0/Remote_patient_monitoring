@@ -16,23 +16,20 @@ jobs:
 
       - name: Install Tsuru CLI
         run: |
-          # Download version 1.22.0 manually
-          wget https://github.com/tsuru/tsuru-client/releases/download/1.22.0/tsuru_1.22.0_linux_amd64.tar.gz
-          
-          # Unzip it
-          tar -xf tsuru_1.22.0_linux_amd64.tar.gz
-          
-          # Move binary to system folder
-          find . -type f -name "tsuru" -exec sudo mv {} /usr/local/bin/tsuru \;
-          
-          # Make executable
-          sudo chmod +x /usr/local/bin/tsuru
-          
+          curl -fsSL https://raw.githubusercontent.com/tsuru/tsuru-client/master/install.sh | sh
+          echo "Tsuru CLI installed"
+
       - name: Add Target
         env:
           TSURU_HOST: ${{ secrets.TSURU_HOST }}
         run: |
           tsuru target-add default $TSURU_HOST -s || tsuru target-set default
+
+      - name: Login with token
+        env:
+          TSURU_TOKEN: ${{ secrets.TSURU_TOKEN }}
+        run: |
+          tsuru login --auth-token $TSURU_TOKEN
 
       - name: Deploy to Tsuru
         env:
