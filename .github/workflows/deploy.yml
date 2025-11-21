@@ -25,12 +25,6 @@ jobs:
         run: |
           tsuru target-add default $TSURU_HOST -s || tsuru target-set default
 
-      - name: Login with token
-        env:
-          TSURU_TOKEN: ${{ secrets.TSURU_TOKEN }}
-        run: |
-          tsuru login --auth-token $TSURU_TOKEN
-
       - name: Deploy to Tsuru
         env:
           TSURU_TOKEN: ${{ secrets.TSURU_TOKEN }}
