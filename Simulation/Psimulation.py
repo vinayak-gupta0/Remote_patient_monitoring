@@ -9,13 +9,13 @@ def build_patient(random_state):
                                  heart rate,
                                  and basic vital signs for a patient."""
 
-    ecg12 = nk.ecg_simulate(duration=60,
+    ecg12 = nk.ecg_simulate(duration=600,
                             method="multileads",
                             sampling_rate=250,
                             random_state=random_state)
     df_ecg12 = pd.DataFrame(ecg12)
 
-    ecg1 = nk.ecg_simulate(duration=60,
+    ecg1 = nk.ecg_simulate(duration=600,
                            sampling_rate=250,
                            random_state=random_state)
     signals, info = nk.ecg_process(ecg1, sampling_rate=250)

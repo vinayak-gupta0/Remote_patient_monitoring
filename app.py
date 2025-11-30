@@ -10,10 +10,16 @@ import pandas as pd
 import altair as alt
 from datetime import date
 import math
+import neurokit2 as nk 
+import numpy as np
 
-from alart import updateAlerts
 import os
 import base64
+
+from Simulation.Psimulation import build_patient as build_patient
+from R_alart import updateAlerts, vitalLevelFunc, VITAL_RANGES
+
+
 
 @dataclass
 class Ranges:
@@ -136,6 +142,7 @@ NAMES = [
 
 if "patients" not in st.session_state:
     st.session_state.patients = {}
+    
     for i in range(1, N_PATIENTS+1):
         pid = f"p{i:02d}"
         name = NAMES[i-1]
@@ -152,56 +159,101 @@ if "patients" not in st.session_state:
             "last_ecg_min": None,
         }
 
-# Sample Simulation
-def get_live_vitals(patient_id) :
+
+if "sim_data" not in st.session_state:
+    st.session_state.sim_data = {}
+    st.session_state.sim_idx = {}
+
+    for i, pid in enumerate(st.session_state.patients.keys(), start=1):
+        sim_dict = build_patient(i) 
+        st.session_state.sim_data[pid] = sim_dict
+        st.session_state.sim_idx[pid] = 0
+
+# Simulation
+def get_live_vitals(patient_id):
     p = st.session_state.patients[patient_id]
     v = p["vitals"]
-    def clamp(x, lo, hi): return max(lo, min(hi, x))
-    v.hr     = clamp(v.hr     + (random.random()-0.5)*2.0, 35, 200)
-    v.temp   = clamp(v.temp   + (random.random()-0.5)*0.03, 34.5, 40.5)
-    v.rr     = clamp(v.rr     + (random.random()-0.5)*0.6, 6, 40)
-    v.bp_sys = clamp(v.bp_sys + (random.random()-0.5)*2.0, 80, 200)
-    v.bp_dia = clamp(v.bp_dia + (random.random()-0.5)*1.2, 50, 120)
+
+    sim = st.session_state.sim_data.get(patient_id)
+    idx = st.session_state.sim_idx.get(patient_id, 0)
+
+    if not sim:
+        return v
+
+    hr_arr     = sim.get("HeartRate_250Hz")
+    temp_arr   = sim.get("Temp")
+    rr_arr     = sim.get("RespRate")
+    bp_sys_arr = sim.get("BP_sys")
+    bp_dia_arr = sim.get("BP_dia")
+
+
+    if hr_arr is None or len(hr_arr) == 0:
+        return v
+
+    n = len(hr_arr)
+    i = idx % n 
+
+    v.hr = float(hr_arr[i])
+
+    if temp_arr is not None and len(temp_arr) > i:
+        v.temp = float(temp_arr[i])
+
+    if rr_arr is not None and len(rr_arr) > i:
+        v.rr = float(rr_arr[i])
+
+    if bp_sys_arr is not None and len(bp_sys_arr) > i:
+        v.bp_sys = float(bp_sys_arr[i])
+
+    if bp_dia_arr is not None and len(bp_dia_arr) > i:
+        v.bp_dia = float(bp_dia_arr[i])
+
+    st.session_state.sim_idx[patient_id] = (i + 1) % n
+
     return v
 
-def update_all_patients():
-    """Update vitals + logs for all patients once per rerun."""
-    for pid, p in st.session_state.patients.items():
-        get_live_vitals(pid)
-        maybe_log_minute(pid)
-        update_ecg_for_patient(p)
-        maybe_sample_ecg(pid)
 
+def update_all_patients():
+    for pid in st.session_state.patients.keys():
+        get_live_vitals(pid)      
+        maybe_log_minute(pid)   
 
 
 def maybe_log_minute(pid):
     p = st.session_state.patients[pid]
     v = p["vitals"]
     now = datetime.now()
-    #HR history
+
     p["hr_history"].append((now.strftime("%H:%M:%S"), int(v.hr)))
-    p["hr_history"] = p["hr_history"][-3600:] # Keep only the last 120 entries
-    # minute logs
+    p["hr_history"] = p["hr_history"][-3600:] 
+
     if p["last_log_min"] != now.minute:
         p["last_log_min"] = now.minute
-        ecg_wave = p["ecg_live"][-300:].copy()
+
+        sim = st.session_state.sim_data.get(pid)
+        idx = st.session_state.sim_idx.get(pid, 0)
+
+        ecg_wave = []
+        if sim and "ECG_single_250Hz" in sim:
+            fs = 250  # Hz
+            window_seconds = 4.0   
+            window_n = int(window_seconds * fs)
+
+            start = max(0, idx - window_n)
+            wave = sim["ECG_single_250Hz"][start:idx]
+            ecg_wave = wave.tolist() 
+
         entry = {
             "t": now.strftime("%Y-%m-%d %H:%M"),
             "hr": int(v.hr),
-            "temp": round(v.temp,1),
+            "temp": round(v.temp, 1),
             "rr": int(v.rr),
             "bp_sys": int(v.bp_sys),
             "bp_dia": int(v.bp_dia),
-            "ecg": ecg_wave, 
+            "ecg": ecg_wave,  
         }
-        p["minute_logs"].append(entry)
 
-        p["ecg_samples"].append({
-            "t": entry["t"],
-            "wave": ecg_wave,
-        })
-        p["minute_logs"] = p["minute_logs"][-10:]
-        p["ecg_samples"] = p["ecg_samples"][-10:]
+        p["minute_logs"].append(entry)
+        p["minute_logs"] = p["minute_logs"][-10:]  
 
 
 def render_hr_trend(p):
@@ -274,95 +326,115 @@ def eod_summary(pid):
         "ecgSamples": len(p.get("ecg_samples", []))
     }
 
-def update_ecg_for_patient(p, points_per_tick=30):
-    phase = p["ecg_phase"]
-    ecg = p["ecg_live"]
 
-    for i in range(points_per_tick):
-        t = phase + i * 0.02  
-        baseline = 0.1 * math.sin(2 * math.pi * 1.0 * t)
-        x = (t % 1.0) - 0.1
-        qrs = math.exp(-(x * x) / 0.0005) * 1.2
-        value = baseline + qrs
-        ecg.append(value)
-
-    # keep last ~300 points for the live trace
-    p["ecg_live"] = ecg[-300:]
-    p["ecg_phase"] = phase + points_per_tick * 0.02
-
-def maybe_sample_ecg(pid):
-    p = st.session_state.patients[pid]
-    now = datetime.now()
-
-    # once per minute
-    if p["last_ecg_min"] != now.minute:
-        p["last_ecg_min"] = now.minute
-        wave = p["ecg_live"][-300:]  # same as previous one
-        p["ecg_samples"].append({
-            "t": now.strftime("%Y-%m-%d %H:%M"),
-            "wave": wave,
-        })
-
-def render_ecg_sparkline(p):
-    ecg = p["ecg_live"]
-    if not ecg:
+def render_ecg_sparkline(pid: str):
+    sim = st.session_state.sim_data.get(pid)
+    if not sim or "ECG_single_250Hz" not in sim:
         st.caption("ECG loading…")
         return
+
+    arr = sim["ECG_single_250Hz"]
+    idx = st.session_state.sim_idx.get(pid, 0)
+    fs = 250
+    window_n = 300  # ~1.2 seconds of ECG at 250 Hz
+
+    if idx == 0:
+        st.caption("ECG loading…")
+        return
+
+    start = max(0, idx - window_n)
+    wave = arr[start:idx]
+
     df = pd.DataFrame({
-        "i": list(range(len(ecg))),
-        "ecg": ecg,
+        "i": np.arange(len(wave)),
+        "ecg": wave,
     })
+
     chart = (
         alt.Chart(df)
         .mark_line()
         .encode(
             x=alt.X("i:Q", title=None, axis=None),
-            y=alt.Y("ecg:Q", title=None, scale=alt.Scale(domain=[-1.5, 2.0])),
+            y=alt.Y("ecg:Q", title=None),
         )
         .properties(height=60)
     )
     st.altair_chart(chart, use_container_width=True)
 
-def render_ecg_history_10min(p):
-    samples = p.get("ecg_samples", [])
-    if not samples:
-        st.caption("ECG history will appear after a few minutes.")
+
+def render_single_ecg(pid: str, max_seconds: float = 4.0):
+    sim = st.session_state.sim_data.get(pid)
+    if not sim or "ECG_single_250Hz" not in sim:
+        st.caption("No simulated single-lead ECG available.")
         return
 
-    # take up to 10 latest snapshots (≈ last 10 minutes)
-    recent = samples[-10:]
+    ecg = sim["ECG_single_250Hz"]
+    fs = 250 
+    n = len(ecg)
+    max_samples = min(n, int(max_seconds * fs))
 
-    rows = []
-    x_idx = 0
-    for snap in recent:
-        wave = snap.get("wave", [])
-        for v in wave:
-            rows.append({"x": x_idx, "ecg": v})
-            x_idx += 1
-
-    if not rows:
-        st.caption("ECG history will appear after a few minutes.")
-        return
-
-    df_hist = pd.DataFrame(rows)
+    df = pd.DataFrame({
+        "t": np.arange(max_samples) / fs,
+        "ecg": ecg[:max_samples],
+    })
 
     chart = (
-        alt.Chart(df_hist)
+        alt.Chart(df)
         .mark_line()
         .encode(
-            x=alt.X("x:Q", title=None, axis=None),
-            y=alt.Y(
-                "ecg:Q",
-                title=None,
-                axis=None,
-                scale=alt.Scale(domain=[-1.5, 2.0]),
-            ),
+            x=alt.X("t:Q", title="Time (s)"),
+            y=alt.Y("ecg:Q", title="ECG (a.u.)"),
         )
-        .properties(height=140)
+        .properties(height=160)
+    )
+    st.altair_chart(chart, use_container_width=True)
+
+def render_12lead_ecg(pid: str, window_seconds: float = 60.0):
+    sim = st.session_state.sim_data.get(pid)
+    if not sim:
+        st.caption("No simulated 12-lead ECG available.")
+        return
+
+    leads = ["I", "II", "III", "V1", "V2", "V3", "V4", "V5", "V6"]
+    available_leads = [lead for lead in leads if lead in sim]
+
+    if not available_leads:
+        st.caption("No ECG leads found in simulation data.")
+        return
+
+    fs = 250
+    idx = st.session_state.sim_idx.get(pid, 0)
+    if idx == 0:
+        st.caption("Waiting for ECG history…")
+        return
+
+    window_n = int(window_seconds * fs)
+    start = max(0, idx - window_n)
+
+    rows = []
+    for lead in available_leads:
+        wave = sim[lead][start:idx]
+        for i, v in enumerate(wave):
+            rows.append({
+                "t": (start + i) / fs, 
+                "ecg": v,
+                "lead": lead,
+            })
+
+    df = pd.DataFrame(rows)
+
+    chart = (
+        alt.Chart(df)
+        .mark_line()
+        .encode(
+            x=alt.X("t:Q", title="Time (s)"),
+            y=alt.Y("ecg:Q", title=None),
+            facet=alt.Facet("lead:N", columns=3),
+        )
+        .properties(height=80)
     )
 
     st.altair_chart(chart, use_container_width=True)
-    st.caption("ECG snapshots over the last ~10 minutes")
 
 
 def navbar():
@@ -470,7 +542,7 @@ def render_grid():
                 "<div style='font-size:11px; opacity:.65; margin-bottom:2px;'>ECG</div>",
                 unsafe_allow_html=True,
             )
-            render_ecg_sparkline(p)
+            render_ecg_sparkline(pid)
             st.markdown("</div>", unsafe_allow_html=True)  # close ECG wrapper
             st.markdown("</div>", unsafe_allow_html=True)  # end body
             st.markdown("</div>", unsafe_allow_html=True)  # end card
@@ -541,8 +613,13 @@ def render_detail(pid: str):
         else:
             st.caption("(history will populate over time)")
         
-        st.markdown("**ECG History (last 10 min)**")
-        render_ecg_history_10min(p)
+        st.markdown("**Simulated Single-lead ECG (ECG_single_250Hz)**")
+        render_single_ecg(pid)
+
+        st.markdown("**Simulated 12-lead ECG history (last 1 minute)**")
+        render_12lead_ecg(pid, window_seconds=60.0)
+
+
 
     with b:
         logs = p["minute_logs"]
@@ -705,7 +782,15 @@ grid_ph = st.container()
 detail_ph = st.container()
 
 update_all_patients()
-updateAlerts(st.session_state.patients,vital_level,DEFAULT_RANGES,audio_ph)
+
+
+updateAlerts(
+    st.session_state.patients,
+    vitalLevelFunc,
+    VITAL_RANGES,
+    audio_ph
+)
+
 with grid_ph:
     render_grid()
 
