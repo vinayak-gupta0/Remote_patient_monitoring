@@ -20,6 +20,10 @@ from Simulation.Psimulation import build_patient as build_patient
 from R_alart import updateAlerts, vitalLevelFunc, VITAL_RANGES
 
 
+FS = 250           # sampling rate used in Psimulation
+STEP_SAMPLES = FS  # advance 1 simulated second each rerun
+
+
 
 @dataclass
 class Ranges:
@@ -186,13 +190,15 @@ def get_live_vitals(patient_id):
     bp_sys_arr = sim.get("BP_sys")
     bp_dia_arr = sim.get("BP_dia")
 
-
     if hr_arr is None or len(hr_arr) == 0:
         return v
 
     n = len(hr_arr)
-    i = idx % n 
 
+    # current sample index in the simulated time series
+    i = idx % n
+
+    # update vitals using the sample at time index i
     v.hr = float(hr_arr[i])
 
     if temp_arr is not None and len(temp_arr) > i:
@@ -207,9 +213,11 @@ def get_live_vitals(patient_id):
     if bp_dia_arr is not None and len(bp_dia_arr) > i:
         v.bp_dia = float(bp_dia_arr[i])
 
-    st.session_state.sim_idx[patient_id] = (i + 1) % n
+    # ⏱ advance by 1 simulated second per rerun (no time compression)
+    st.session_state.sim_idx[patient_id] = (idx + STEP_SAMPLES) % n
 
     return v
+
 
 
 def update_all_patients():
@@ -362,20 +370,32 @@ def render_ecg_sparkline(pid: str):
     st.altair_chart(chart, use_container_width=True)
 
 
-def render_single_ecg(pid: str, max_seconds: float = 4.0):
+def render_single_ecg(pid: str, window_seconds: float = 60.0):
     sim = st.session_state.sim_data.get(pid)
     if not sim or "ECG_single_250Hz" not in sim:
         st.caption("No simulated single-lead ECG available.")
         return
 
-    ecg = sim["ECG_single_250Hz"]
-    fs = 250 
-    n = len(ecg)
-    max_samples = min(n, int(max_seconds * fs))
+    arr = sim["ECG_single_250Hz"]
+    fs = FS  # 250 Hz
 
+    idx = st.session_state.sim_idx.get(pid, 0)
+    if idx == 0:
+        st.caption("Waiting for ECG history…")
+        return
+
+    window_n = int(window_seconds * fs)
+    start = max(0, idx - window_n)
+
+    wave = arr[start:idx]
+    if len(wave) == 0:
+        st.caption("No ECG samples in window.")
+        return
+
+    # time axis in seconds, aligned to simulation time
     df = pd.DataFrame({
-        "t": np.arange(max_samples) / fs,
-        "ecg": ecg[:max_samples],
+        "t": np.arange(start, start + len(wave)) / fs,
+        "ecg": wave,
     })
 
     chart = (
@@ -387,7 +407,9 @@ def render_single_ecg(pid: str, max_seconds: float = 4.0):
         )
         .properties(height=160)
     )
+
     st.altair_chart(chart, use_container_width=True)
+
 
 def render_12lead_ecg(pid: str, window_seconds: float = 60.0):
     sim = st.session_state.sim_data.get(pid)
@@ -429,7 +451,7 @@ def render_12lead_ecg(pid: str, window_seconds: float = 60.0):
         .encode(
             x=alt.X("t:Q", title="Time (s)"),
             y=alt.Y("ecg:Q", title=None),
-            facet=alt.Facet("lead:N", columns=3),
+            facet=alt.Facet("lead:N", columns=1),
         )
         .properties(height=80)
     )
@@ -614,7 +636,7 @@ def render_detail(pid: str):
             st.caption("(history will populate over time)")
         
         st.markdown("**Simulated Single-lead ECG (ECG_single_250Hz)**")
-        render_single_ecg(pid)
+        render_single_ecg(pid, window_seconds=60.0)
 
         st.markdown("**Simulated 12-lead ECG history (last 1 minute)**")
         render_12lead_ecg(pid, window_seconds=60.0)
