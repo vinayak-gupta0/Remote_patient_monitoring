@@ -1,36 +1,38 @@
-name: Deploy to Tsuru
+name: Deploy to tsuru
 
 on:
   push:
     branches:
-      - main
-      - master
+      - main      # or master, change if needed
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Install Tsuru CLI
+      # Install tsuru client
+      - name: Install tsuru CLI
         run: |
-          curl -fsSL https://raw.githubusercontent.com/tsuru/tsuru-client/master/install.sh | sh
-          echo "Tsuru CLI installed"
+          curl -sL https://tsuru.io/get | bash
+          echo "$HOME/bin" >> $GITHUB_PATH
 
-      - name: Add Target
+      # Configure tsuru target and token using your secrets
+      - name: Configure tsuru
         env:
           TSURU_HOST: ${{ secrets.TSURU_HOST }}
-        run: |
-          tsuru target-add default $TSURU_HOST -s || tsuru target-set default
-
-      # REMOVED: "Create deploy package" step is not needed.
-      
-      - name: Deploy to Tsuru
-        env:
           TSURU_TOKEN: ${{ secrets.TSURU_TOKEN }}
-        # We simply use "." to tell Tsuru to deploy the current directory.
+        run: |
+          tsuru target-add default "$TSURU_HOST" -s
+          tsuru token-set "$TSURU_TOKEN"
+
+      # Deploy the app
+      - name: Deploy app to tsuru
+        run: |
+          tsuru app-deploy -a remote-monitor .
+
         # Tsuru handles the zipping internally.
         run: |
           tsuru app-deploy -a bioeng-scone-app .
