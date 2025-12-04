@@ -30,9 +30,7 @@ jobs:
 
       # Deploy the app
       - name: Deploy app to tsuru
-        run: |
-          tsuru app-deploy -a remote-monitor .
-
+        
         # Tsuru handles the zipping internally.
         run: |
           tsuru app-deploy -a bioeng-scone-app .
