@@ -33,4 +33,4 @@ jobs:
         
         # Tsuru handles the zipping internally.
         run: |
-          tsuru app-deploy -a bioeng-scone-app .
+          tsuru app-deploy -a bioeng-scone-app-py.
