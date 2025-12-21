@@ -1,5 +1,5 @@
-streamlit==1.40.0
+streamlit
 pandas
 altair
-neurokit2
 numpy
+neurokit2
