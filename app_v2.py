@@ -41,15 +41,6 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 
-def get_mode():
-    #test panel: /?mode=test
-    if hasattr(st, "query_params"):
-        v = st.query_params.get("mode", "")
-        return v if isinstance(v, str) else (v[0] if v else "")
-    if hasattr(st, "experimental_get_query_params"):
-        return st.experimental_get_query_params().get("mode", [""])[0]
-    return ""
-
 
 # Alarm audio configuration
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -59,6 +50,7 @@ MIME_TYPE = "audio/mpeg"
 ALARM_VOLUME = 0.8
 ALARM_COOLDOWN_SEC = 8 
 
+st.set_page_config(page_title="Remote Monitor", layout="wide",initial_sidebar_state="expanded")
 
 @st.cache_data
 def _load_audio_b64(path: str) -> Optional[str]:
@@ -239,7 +231,7 @@ def getAllscore(vitals: Any) -> Dict[str, Any]:
         "subscores": subs,  # handy for debugging/UI
     }
 
-def updateAlerts(patients: Dict, audio_container) -> None:
+def updateAlerts(patients: Dict, audio_container):
     """
     Triggers alarm when NEWS2 band is HIGH (total_score >= 7) for any patient.
     Uses cooldown to avoid repeated replay on Streamlit reruns.
@@ -293,18 +285,11 @@ class Vitals:
     bp_dia: float # mmHg
 
 
-
-st.set_page_config(page_title="Remote Monitor", layout="wide")
-
 st.markdown(
     """
 <style>
-[data-testid="stHeader"] {
-    display: none;
-}
-
 .block-container {
-    padding-top: 0.5rem;
+    padding-top: 2rem;
 }
 
 .rm-card {
@@ -457,57 +442,55 @@ def apply_scenario_override(pid: str, v):
     return v
 
 
-def emergency_test_panel_page():
-    st.title("Emergency Test Panel")
-    st.caption("Use this page to inject emergency scenarios into the live simulation.")
 
-    pids = list(st.session_state.patients.keys())
-    test_pid = st.selectbox(
-        "Target patient",
-        pids,
-        format_func=lambda pid: f"{st.session_state.patients[pid]['name']} ({pid})"
-    )
+def emergency_test_panel():
+    with st.sidebar:
+        st.markdown("## Test Panel")
 
-    duration = st.slider("Duration (seconds)", 5, 300, 30, step=5)
-
-    presets = {
-        "Hypertensive crisis (stroke-like)": {"bp_sys": 230, "bp_dia": 120, "rr": 22, "hr": 115, "temp": 37.0},
-        "Sepsis-like": {"temp": 39.4, "rr": 26, "hr": 135, "bp_sys": 95, "bp_dia": 60},
-        "Respiratory failure": {"rr": 30, "hr": 120, "temp": 37.2, "bp_sys": 115, "bp_dia": 75},
-        "Bradycardia collapse": {"hr": 38, "rr": 10, "temp": 36.5, "bp_sys": 85, "bp_dia": 55},
-        "Return to normal": None,
-    }
-
-    preset_name = st.selectbox("Preset scenario", list(presets.keys()))
-
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("Apply", use_container_width=True):
-            if presets[preset_name] is None:
-                st.session_state.scenario.pop(test_pid, None)
-            else:
-                st.session_state.scenario[test_pid] = {
-                    "name": preset_name,
-                    "until": time.time() + duration,
-                    "overrides": presets[preset_name],
-                }
-            st.success("Applied.")
-
-    with col2:
-        if st.button("Clear", use_container_width=True):
-            st.session_state.scenario.pop(test_pid, None)
-            st.success("Cleared.")
-
-    active = st.session_state.scenario.get(test_pid)
-    if active:
-        remaining = int(active["until"] - time.time()) if active.get("until") else None
-        st.info(
-            f"Active: {active['name']} | Remaining: {remaining}s"
-            if remaining is not None
-            else f"Active: {active['name']}"
+        pids = list(st.session_state.patients.keys())
+        test_pid = st.selectbox(
+            "Target patient",
+            pids,
+            format_func=lambda pid: f"{st.session_state.patients[pid]['name']} ({pid})"
         )
-    else:
-        st.caption("No active scenario for selected patient.")
+
+        duration = st.slider("Duration (seconds)", 5, 300, 30, step=5)
+
+        presets = {
+            "Stroke": {"bp_sys": 230, "bp_dia": 120, "rr": 22, "hr": 115, "temp": 37.0},
+            "Sepsis-like": {"temp": 39.4, "rr": 26, "hr": 135, "bp_sys": 95, "bp_dia": 60},
+            "Respiratory failure": {"rr": 30, "hr": 120, "temp": 37.2, "bp_sys": 115, "bp_dia": 75},
+            "Bradycardia collapse": {"hr": 38, "rr": 10, "temp": 36.5, "bp_sys": 85, "bp_dia": 55},
+        }
+
+        preset_name = st.selectbox("Preset scenario", list(presets.keys()))
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            if st.button("Apply", use_container_width=True):
+                if presets[preset_name] is None:
+                    st.session_state.scenario.pop(test_pid, None)
+                else:
+                    st.session_state.scenario[test_pid] = {
+                        "name": preset_name,
+                        "until": time.time() + duration,
+                        "overrides": presets[preset_name],
+                    }
+
+        with col2:
+            if st.button("Clear", use_container_width=True):
+                st.session_state.scenario.pop(test_pid, None)
+
+        # Show current scenario status
+        active = st.session_state.scenario.get(test_pid)
+        if active:
+            remaining = int(active["until"] - time.time()) if active.get("until") else None
+            st.info(f"Active: {active['name']}\n\nRemaining: {remaining}s" if remaining is not None else f"Active: {active['name']}")
+        else:
+            st.caption("No active scenario for selected patient.")
+
+emergency_test_panel()
 
 
 # Simulation
@@ -1058,10 +1041,10 @@ def render_detail(pid: str):
         else:
             st.caption("(history will populate over time)")
         
-        st.markdown("**Simulated Single-lead ECG (ECG_single_250Hz)**")
+        st.markdown("**Single-lead ECG (ECG_single_250Hz)**")
         render_single_ecg(pid, window_seconds=60.0)
 
-        st.markdown("**Simulated 12-lead ECG history (select leads)**")
+        st.markdown("**12-lead ECG history (select leads)**")
         all_leads = ["I", "II", "III", "V1", "V2", "V3", "V4", "V5", "V6"]
 
 
@@ -1288,10 +1271,6 @@ def render_detail(pid: str):
             key=f"daily_csv_{pid}",
         )
 
-mode = get_mode()
-if mode == "test":
-    emergency_test_panel_page()
-    st.stop()
 
 nav_ph = st.container()
 with nav_ph:
