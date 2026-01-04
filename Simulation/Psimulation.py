@@ -47,4 +47,4 @@ def build_patient(random_state):
 for i in range(1, 3):
     globals()[f"patient{i}"] = build_patient(i)
 
-print(patient2)
+# print(patient2)

@@ -13,10 +13,12 @@ import math
 import neurokit2 as nk 
 import numpy as np
 
+
 import os
 import base64
 
 from Simulation.Psimulation import build_patient as build_patient
+
 
 
 # R_alart.py  (complete, deploy-friendly)
@@ -37,6 +39,16 @@ from typing import Dict, List, Any, Optional
 
 import streamlit as st
 import streamlit.components.v1 as components
+
+
+def get_mode():
+    #test panel: /?mode=test
+    if hasattr(st, "query_params"):
+        v = st.query_params.get("mode", "")
+        return v if isinstance(v, str) else (v[0] if v else "")
+    if hasattr(st, "experimental_get_query_params"):
+        return st.experimental_get_query_params().get("mode", [""])[0]
+    return ""
 
 
 # Alarm audio configuration
@@ -408,15 +420,95 @@ if "patients" not in st.session_state:
             "last_report_key": None,
         }
 
+@st.cache_data(show_spinner=False)
+def cached_build_patient(i: int):
+    return build_patient(i)
+
 
 if "sim_data" not in st.session_state:
     st.session_state.sim_data = {}
     st.session_state.sim_idx = {}
 
     for i, pid in enumerate(st.session_state.patients.keys(), start=1):
-        sim_dict = build_patient(i) 
+        sim_dict = cached_build_patient(i)
         st.session_state.sim_data[pid] = sim_dict
         st.session_state.sim_idx[pid] = 0
+
+if "scenario" not in st.session_state:
+    st.session_state.scenario = {}
+
+def apply_scenario_override(pid: str, v):
+
+    sc = st.session_state.scenario.get(pid)
+    if not sc:
+        return v
+
+    until = sc.get("until")
+    if until is not None and time.time() > float(until):
+        st.session_state.scenario.pop(pid, None)
+        return v
+
+    ov = sc.get("overrides", {}) or {}
+    if "hr" in ov: v.hr = float(ov["hr"])
+    if "rr" in ov: v.rr = float(ov["rr"])
+    if "temp" in ov: v.temp = float(ov["temp"])
+    if "bp_sys" in ov: v.bp_sys = float(ov["bp_sys"])
+    if "bp_dia" in ov: v.bp_dia = float(ov["bp_dia"])
+    return v
+
+
+def emergency_test_panel_page():
+    st.title("Emergency Test Panel")
+    st.caption("Use this page to inject emergency scenarios into the live simulation.")
+
+    pids = list(st.session_state.patients.keys())
+    test_pid = st.selectbox(
+        "Target patient",
+        pids,
+        format_func=lambda pid: f"{st.session_state.patients[pid]['name']} ({pid})"
+    )
+
+    duration = st.slider("Duration (seconds)", 5, 300, 30, step=5)
+
+    presets = {
+        "Hypertensive crisis (stroke-like)": {"bp_sys": 230, "bp_dia": 120, "rr": 22, "hr": 115, "temp": 37.0},
+        "Sepsis-like": {"temp": 39.4, "rr": 26, "hr": 135, "bp_sys": 95, "bp_dia": 60},
+        "Respiratory failure": {"rr": 30, "hr": 120, "temp": 37.2, "bp_sys": 115, "bp_dia": 75},
+        "Bradycardia collapse": {"hr": 38, "rr": 10, "temp": 36.5, "bp_sys": 85, "bp_dia": 55},
+        "Return to normal": None,
+    }
+
+    preset_name = st.selectbox("Preset scenario", list(presets.keys()))
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Apply", use_container_width=True):
+            if presets[preset_name] is None:
+                st.session_state.scenario.pop(test_pid, None)
+            else:
+                st.session_state.scenario[test_pid] = {
+                    "name": preset_name,
+                    "until": time.time() + duration,
+                    "overrides": presets[preset_name],
+                }
+            st.success("Applied.")
+
+    with col2:
+        if st.button("Clear", use_container_width=True):
+            st.session_state.scenario.pop(test_pid, None)
+            st.success("Cleared.")
+
+    active = st.session_state.scenario.get(test_pid)
+    if active:
+        remaining = int(active["until"] - time.time()) if active.get("until") else None
+        st.info(
+            f"Active: {active['name']} | Remaining: {remaining}s"
+            if remaining is not None
+            else f"Active: {active['name']}"
+        )
+    else:
+        st.caption("No active scenario for selected patient.")
+
 
 # Simulation
 def get_live_vitals(patient_id):
@@ -453,6 +545,7 @@ def get_live_vitals(patient_id):
         v.bp_dia = float(bp_dia_arr[i])
 
     st.session_state.sim_idx[patient_id] = (idx + STEP_SAMPLES) % n
+    v = apply_scenario_override(patient_id, v)
 
     return v
 
@@ -701,17 +794,15 @@ def render_single_ecg(pid: str, window_seconds: float = 60.0):
     st.altair_chart(chart, use_container_width=True)
 
 
-def render_12lead_ecg(pid: str, window_seconds: float = 60.0):
+def render_12lead_ecg(pid: str, selected_leads: list[str], window_seconds: float = 10.0):
     sim = st.session_state.sim_data.get(pid)
     if not sim:
         st.caption("No simulated 12-lead ECG available.")
         return
 
-    leads = ["I", "II", "III", "V1", "V2", "V3", "V4", "V5", "V6"]
-    available_leads = [lead for lead in leads if lead in sim]
-
-    if not available_leads:
-        st.caption("No ECG leads found in simulation data.")
+    available = [lead for lead in selected_leads if lead in sim]
+    if not available:
+        st.caption("Selected leads are not available in simulation data.")
         return
 
     fs = 250
@@ -724,16 +815,32 @@ def render_12lead_ecg(pid: str, window_seconds: float = 60.0):
     start = max(0, idx - window_n)
 
     rows = []
-    for lead in available_leads:
+    for lead in available:
         wave = sim[lead][start:idx]
         for i, v in enumerate(wave):
             rows.append({
-                "t": (start + i) / fs, 
-                "ecg": v,
+                "t": (start + i) / fs,
+                "ecg": float(v),
                 "lead": lead,
             })
 
     df = pd.DataFrame(rows)
+    if df.empty:
+        st.caption("No ECG samples in window.")
+        return
+
+    if len(available) == 1:
+        chart = (
+            alt.Chart(df)
+            .mark_line()
+            .encode(
+                x=alt.X("t:Q", title="Time (s)"),
+                y=alt.Y("ecg:Q", title="ECG (a.u.)"),
+            )
+            .properties(height=200)
+        )
+        st.altair_chart(chart, use_container_width=True)
+        return
 
     chart = (
         alt.Chart(df)
@@ -743,7 +850,7 @@ def render_12lead_ecg(pid: str, window_seconds: float = 60.0):
             y=alt.Y("ecg:Q", title=None),
             facet=alt.Facet("lead:N", columns=1),
         )
-        .properties(height=80)
+        .properties(height=90)
     )
 
     st.altair_chart(chart, use_container_width=True)
@@ -954,8 +1061,21 @@ def render_detail(pid: str):
         st.markdown("**Simulated Single-lead ECG (ECG_single_250Hz)**")
         render_single_ecg(pid, window_seconds=60.0)
 
-        st.markdown("**Simulated 12-lead ECG history (last 1 minute)**")
-        render_12lead_ecg(pid, window_seconds=60.0)
+        st.markdown("**Simulated 12-lead ECG history (select leads)**")
+        all_leads = ["I", "II", "III", "V1", "V2", "V3", "V4", "V5", "V6"]
+
+
+        sel_key = f"ecg_leads_{pid}"
+        if sel_key not in st.session_state:
+            st.session_state[sel_key] = []  # default lead
+
+        selected_leads = st.multiselect(
+            "Leads to display",
+            options=all_leads,
+            default=st.session_state[sel_key],
+            key=sel_key,
+        )
+        render_12lead_ecg(pid, selected_leads=selected_leads, window_seconds=60.0)
 
     with b:
         logs = p["minute_logs"]
@@ -1168,6 +1288,10 @@ def render_detail(pid: str):
             key=f"daily_csv_{pid}",
         )
 
+mode = get_mode()
+if mode == "test":
+    emergency_test_panel_page()
+    st.stop()
 
 nav_ph = st.container()
 with nav_ph:
