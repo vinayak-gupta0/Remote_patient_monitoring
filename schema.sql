@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS minute_logs (
   ecg_snippet JSONB,             
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-  -- prevent duplicates from Streamlit reruns:
+  -- prevent duplicates
   CONSTRAINT uq_minute_log UNIQUE (patient_id, ts_minute)
 );
 
