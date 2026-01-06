@@ -29,7 +29,7 @@ from Simulation.Psimulation import build_patient as build_patient
 # updateAlerts(): plays alarm when HIGH (total >= 7) with cooldown to avoid spam
 #
 # IMPORTANT:
-# 1) Put your mp3 in: <same folder as this file>/assets/deep2.mp3
+# 1) Put your mp3 in: <same folder as this file>/beep.mp3
 # 2) Browser may block autoplay. This code also offers a manual "Play alarm" button.
 
 import os
@@ -44,7 +44,7 @@ import streamlit.components.v1 as components
 
 # Alarm audio configuration
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-ALARM_PATH = os.path.join(THIS_DIR, "assets", "deep2.mp3")
+ALARM_PATH = os.path.join(THIS_DIR, "beep.mp3")
 
 MIME_TYPE = "audio/mpeg"
 ALARM_VOLUME = 0.8
