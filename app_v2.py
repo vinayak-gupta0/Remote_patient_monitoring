@@ -12,6 +12,7 @@ from datetime import date
 import math
 import neurokit2 as nk 
 import numpy as np
+from db import insert_vitals
 
 
 import os
@@ -529,15 +530,20 @@ def get_live_vitals(patient_id):
 
     st.session_state.sim_idx[patient_id] = (idx + STEP_SAMPLES) % n
     v = apply_scenario_override(patient_id, v)
-
+    
+    now = time.time()
+    last = p.get("last_db_write", 0.0)
+    if now - last >= 60:
+        insert_vitals(patient_id, v.hr, v.rr, v.temp, v.bp_sys, v.bp_dia)
+        p["last_db_write"] = now
     return v
 
 
 def update_all_patients():
     for pid in st.session_state.patients.keys():
         get_live_vitals(pid)      
-        maybe_log_minute(pid)   
-
+        maybe_log_minute(pid)  
+    
 
 def update_daily_report(pid: str, now: datetime) -> None:
     """
