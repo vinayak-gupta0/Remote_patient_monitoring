@@ -18,7 +18,9 @@ import base64
 
 from Simulation.Psimulation import build_patient as build_patient
 from R_alart import updateAlerts, vitalLevelFunc, VITAL_RANGES
-
+"""
+Deployed
+"""
 
 FS = 250           # sampling rate used in Psimulation
 STEP_SAMPLES = FS  # advance 1 simulated second each rerun

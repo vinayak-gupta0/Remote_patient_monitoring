@@ -3,3 +3,16 @@ pandas
 altair
 numpy
 neurokit2
+os
+matplotlib.pyplot
+typing
+base64
+time
+random
+dataclasses 
+datetime 
+json
+math
+contextlib 
+psycopg
+dotenv 
