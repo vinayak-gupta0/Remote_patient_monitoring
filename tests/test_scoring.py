@@ -1,7 +1,7 @@
 import pytest
 import types
 
-import app_v2 as m
+import Prototypes.app_v2 as m
 
 def vitals(rr=16, hr=70, bp_sys=120, temp=37.0):
     """Create a minimal vitals-like object with required attributes."""

@@ -2,7 +2,7 @@
 
 import base64
 import types
-import app_v2 as m
+import Prototypes.app_v2 as m
 
 
 class DummyContainer:
